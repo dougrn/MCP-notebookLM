@@ -1,0 +1,8 @@
+# Dependências exatas do servidor MCP NotebookLM
+fastmcp==4.1.0
+mcp==2.3.0
+notebooklm-py==0.8.5
+playwright==1.64.0
+python-dotenv==1.2.4
+pydantic==2.14.1
+rich==15.0.0

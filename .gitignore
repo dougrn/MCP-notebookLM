@@ -1,0 +1,44 @@
+# Ambientes Virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Arquivos de ambiente e chaves
+.env
+.env.local
+
+# Mídias e downloads do Studio (áudios, podcasts, vídeos)
+*.m4a
+*.mp4
+*.pdf
+downloads/
+
+# Playwright
+.playwright/
+
+# IDEs
+.vscode/
+.idea/
