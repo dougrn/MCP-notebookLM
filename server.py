@@ -13,28 +13,42 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from fastmcp import FastMCP
 from notebooklm import NotebookLMClient
 from notebooklm.mcp.server import create_server as create_base_server
-from notebooklm.paths import get_storage_path
+from notebooklm.paths import get_master_token_path, get_storage_path
+
+# Carrega variáveis de ambiente do .env caso exista
+load_dotenv()
 
 
-def check_auth_status() -> dict[str, Any]:
-    """Inspeciona o arquivo de credenciais de autenticação local."""
-    storage_path = get_storage_path()
-    exists = os.path.exists(storage_path)
+def check_auth_status(profile: str | None = None) -> dict[str, Any]:
+    """Inspeciona o arquivo de credenciais e a presença de Master Token."""
+    storage_path = get_storage_path(profile=profile)
+    master_token_path = get_master_token_path(profile=profile)
+
+    storage_exists = storage_path.exists()
+    master_token_exists = master_token_path.exists()
 
     return {
-        "authenticated": exists,
+        "authenticated": storage_exists,
+        "master_token": master_token_exists,
         "storage_path": str(storage_path),
+        "master_token_path": str(master_token_path),
         "message": (
-            "Credenciais locais encontradas."
-            if exists
-            else "Credenciais locais ausentes. Execute 'python login.py' para autenticar no Google."
+            "Credenciais locais encontradas (Sessão com Master Token durável)."
+            if master_token_exists
+            else (
+                "Credenciais locais encontradas (Apenas cookies voláteis - execute 'python login.py' para Master Token durável)."
+                if storage_exists
+                else "Credenciais locais ausentes. Execute 'python login.py' para autenticar no Google."
+            )
         ),
     }
 
@@ -48,10 +62,11 @@ def build_server(profile: str | None = None) -> FastMCP:
     @server.tool(name="auth_check")
     async def auth_check() -> dict[str, Any]:
         """Verifica se a autenticação com o Google NotebookLM está configurada e válida."""
-        status = check_auth_status()
+        status = check_auth_status(profile=profile)
         if not status["authenticated"]:
             return {
                 "status": "unauthenticated",
+                "master_token": False,
                 "message": (
                     "Autenticação não configurada. "
                     "Abra o terminal neste projeto e execute 'python login.py' para fazer o login no Google."
@@ -64,6 +79,7 @@ def build_server(profile: str | None = None) -> FastMCP:
                 notebooks = await client.notebooks.list()
                 return {
                     "status": "authenticated",
+                    "master_token": status["master_token"],
                     "storage_path": status["storage_path"],
                     "total_notebooks": len(notebooks),
                     "active_account": await client.get_account_email(),
@@ -72,11 +88,89 @@ def build_server(profile: str | None = None) -> FastMCP:
         except Exception as exc:
             return {
                 "status": "expired_or_error",
+                "master_token": status["master_token"],
                 "storage_path": status["storage_path"],
                 "error": str(exc),
                 "message": (
-                    "A sessão expirou ou é inválida. "
-                    "Execute 'python login.py' para renovar os cookies do Google."
+                    "A sessão expirou. Execute 'python login.py' no terminal para autenticar com Master Token durável."
+                    if not status["master_token"]
+                    else f"Erro ao validar sessão com Master Token: {exc}. Tente chamar 'auth_reconnect'."
+                ),
+            }
+
+    # Ferramenta de reconexão / re-emissão de cookies em background
+    @server.tool(name="auth_reconnect")
+    async def auth_reconnect() -> dict[str, Any]:
+        """Tenta reconectar a sessão do NotebookLM re-emitindo cookies a partir do Master Token."""
+        status = check_auth_status(profile=profile)
+        if not status["master_token"]:
+            return {
+                "status": "manual_action_required",
+                "master_token": False,
+                "message": (
+                    "Não há um Master Token configurado. Cookies voláteis do Google não podem ser "
+                    "renovados de forma autônoma pela IA. O usuário precisa executar no terminal: "
+                    "'python login.py' para salvar o Master Token durável."
+                ),
+            }
+
+        try:
+            from notebooklm._auth.master_token import remint_from_stored_token
+
+            storage_path = Path(status["storage_path"])
+            await remint_from_stored_token(storage_path)
+
+            async with NotebookLMClient.from_storage(profile=profile) as client:
+                notebooks = await client.notebooks.list()
+                return {
+                    "status": "reconnected",
+                    "master_token": True,
+                    "total_notebooks": len(notebooks),
+                    "active_account": await client.get_account_email(),
+                    "message": "Sessão renovada com sucesso em segundo plano via Master Token!",
+                }
+        except Exception as exc:
+            return {
+                "status": "error",
+                "master_token": True,
+                "error": str(exc),
+                "message": f"Falha ao re-emitir credenciais: {exc}. Execute 'python login.py' para reautenticar.",
+            }
+
+    # Ferramenta para abrir a janela de autenticação interativa na tela do usuário
+    @server.tool(name="auth_login")
+    async def auth_login(browser: str = "chrome") -> dict[str, Any]:
+        """Abre uma nova janela no desktop do usuário para autenticação interativa no Google.
+
+        Esta ferramenta não bloqueia o harness: ela dispara a janela do navegador desanexada
+        e retorna imediatamente para que a IA possa pedir ao usuário para concluir o login.
+        """
+        python_exe = sys.executable
+        script_path = Path(__file__).parent / "login.py"
+
+        try:
+            creationflags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
+            proc = subprocess.Popen(
+                [python_exe, str(script_path), "--browser", browser],
+                creationflags=creationflags,
+            )
+            return {
+                "status": "login_window_opened",
+                "pid": proc.pid,
+                "browser": browser,
+                "message": (
+                    "A janela de login do Google (com Master Token persistente) foi aberta na tela do usuário. "
+                    "Peça ao usuário para realizar o login na janela aberta. "
+                    "Assim que ele concluir, utilize a ferramenta 'auth_check' para confirmar a conexão."
+                ),
+            }
+        except Exception as exc:
+            return {
+                "status": "error",
+                "error": str(exc),
+                "message": (
+                    f"Não foi possível abrir a janela automaticamente: {exc}. "
+                    "Peça ao usuário para executar 'python login.py' manualmente no terminal."
                 ),
             }
 
@@ -138,30 +232,35 @@ def main() -> None:
     )
     parser.add_argument(
         "--host",
-        default="127.0.0.1",
+        default=os.environ.get("HOST", "127.0.0.1"),
         help="Host para modo HTTP (padrão: 127.0.0.1)",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=8000,
+        default=int(os.environ.get("PORT", 8000)),
         help="Porta para modo HTTP (padrão: 8000)",
     )
     parser.add_argument(
         "--profile",
-        default=None,
+        default=os.environ.get("NOTEBOOKLM_PROFILE", None),
         help="Perfil de autenticação do NotebookLM (padrão: default)",
     )
 
     args = parser.parse_args()
 
     # Informa no stderr se a autenticação não estiver pronta
-    auth_info = check_auth_status()
+    auth_info = check_auth_status(profile=args.profile)
     if not auth_info["authenticated"]:
         sys.stderr.write(
             "[AVISO] Credenciais do NotebookLM não encontradas em "
             f"{auth_info['storage_path']}.\n"
             "Execute 'python login.py' para autenticar com sua conta Google.\n"
+        )
+    elif not auth_info["master_token"]:
+        sys.stderr.write(
+            "[AVISO] Sessão configurada apenas com cookies voláteis.\n"
+            "Recomendado executar 'python login.py' para salvar o Master Token e evitar perda de conexão.\n"
         )
 
     server = build_server(profile=args.profile)

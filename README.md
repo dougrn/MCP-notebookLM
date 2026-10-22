@@ -87,30 +87,32 @@ MCP-notebookLM/
 
 ## 🔑 Autenticação
 
-O Google NotebookLM utiliza autenticação baseada em sessão de conta Google.
+O Google NotebookLM utiliza autenticação vinculada à sua conta Google. Para evitar que a sessão expire e o servidor MCP desconecte com frequência, o projeto utiliza **Master Token** persistente.
 
-### Primeiro Login
+### Login Único e Persistente (Recomendado)
 
 Execute o utilitário interativo:
 ```powershell
 python login.py
 ```
-Uma janela do navegador será iniciada para que você faça login com sua conta Google. Os tokens e cookies serão salvos de forma segura no perfil local:
-`~/.notebooklm/profiles/default/storage_state.json`
-
-### Importar Cookies do Navegador Instalado
-
-Você também pode extrair a sessão diretamente do Chrome ou Edge local:
-```powershell
-python login.py --cookies chrome
-```
+1. Uma janela do navegador será iniciada para você fazer o login com sua conta Google.
+2. O **Google Master Token** será gerado e salvo em `~/.notebooklm/profiles/default/master_token.json`.
+3. **Sessão durável**: Sempre que os cookies expirarem, a biblioteca renova as credenciais automaticamente em background via OAuth, sem você precisar fazer login de novo e sem que a IA perca o acesso.
 
 ### Checagem de Saúde da Sessão
 
-Para verificar a qualquer momento se a sessão continua ativa:
+Para verificar a qualquer momento se a sessão continua ativa e se o Master Token está presente:
 ```powershell
 python login.py --check
 ```
+
+### Testar Renovação de Sessão
+
+Para testar a re-emissão de novos cookies a partir do Master Token:
+```powershell
+python login.py --refresh
+```
+
 
 ---
 
@@ -175,7 +177,9 @@ claude mcp add notebooklm -- c:/Users/dougl/Desktop/Serviços/_Pessoais/MCP-note
 
 | Categoria | Ferramenta | Descrição |
 | :--- | :--- | :--- |
-| **Diagnóstico** | `auth_check` | Verifica status de conexão e validade da sessão Google |
+| **Diagnóstico & Auth** | `auth_check` | Verifica status de conexão e presença do Master Token durável |
+| | `auth_reconnect` | Força renovação silenciosa de cookies via Master Token em background |
+| | `auth_login` | Dispara a janela de login na tela do usuário a partir do harness |
 | | `server_info` | Detalhes do servidor, versão do runtime e perfil ativo |
 | **Cadernos** | `notebook_list` | Lista todos os cadernos com ID, título, contagem de fontes e datas |
 | | `notebook_create` | Cria um novo caderno no NotebookLM |

@@ -6,3 +6,9 @@ playwright==1.64.0
 python-dotenv==1.2.4
 pydantic==2.14.1
 rich==15.0.0
+# Suporte a Master Token (autenticação persistente sem expiração de sessão)
+gpsoauth==2.0.0
+pycryptodomex==3.24.1
+requests==2.34.2
+urllib3==2.8.0
+
