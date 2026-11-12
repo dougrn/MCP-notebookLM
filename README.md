@@ -26,19 +26,15 @@ Diferente de soluções lentas baseadas em automação visual contínua (DOM/UI 
 git clone https://github.com/dougrn/MCP-notebookLM.git
 cd MCP-notebookLM
 
-# 2. Crie e ative o ambiente virtual
-uv venv .venv
-.venv\Scripts\activate   # No Windows (ou 'source .venv/bin/activate' no Linux/macOS)
+# 2. Instale e sincronize as dependências com o uv
+uv sync
+uv run playwright install chromium
 
-# 3. Instale as dependências
-uv pip install -r requirements.txt "notebooklm-py[cookies]"
-playwright install chromium
+# 3. Faça o login persistente com Master Token (não perde sessão)
+uv run python login.py --master-token --account seu_email@gmail.com
 
-# 4. Faça o login único com sua conta Google
-python login.py
-
-# 5. Inicie o servidor MCP em modo stdio
-python server.py
+# 4. Inicie o servidor MCP em modo stdio
+uv run python server.py
 ```
 
 ---
@@ -85,32 +81,40 @@ MCP-notebookLM/
 
 ---
 
-## 🔑 Autenticação
+## 🔑 Autenticação e Sessão Persistente
 
-O Google NotebookLM utiliza autenticação vinculada à sua conta Google. Para evitar que a sessão expire e o servidor MCP desconecte com frequência, o projeto utiliza **Master Token** persistente.
+### Por que a sessão comum do Google cai rápido?
+Os cookies de autenticação web do Google (`__Secure-1PSIDTS`, `OSID`) possuem um tempo de vida muito curto (poucas horas) e são rotacionados automaticamente pela nuvem sempre que você acessa o Gmail, YouTube ou fecha o navegador. Sem um **Master Token**, a biblioteca não consegue renovar esses cookies e a sessão expira.
 
-### Login Único e Persistente (Recomendado)
+### Solução: Login com Master Token (Durável)
+Com o **Master Token**, o NotebookLM utiliza o protocolo OAuth de dispositivo do Google para re-emitir cookies atualizados em segundo plano silenciosamente (headless), garantindo que o servidor MCP permaneça conectado continuamente.
 
-Execute o utilitário interativo:
+#### 1. Login Interativo (Recomendado)
+
 ```powershell
-python login.py
+uv run python login.py --master-token --account seu_email@gmail.com
 ```
-1. Uma janela do navegador será iniciada para você fazer o login com sua conta Google.
-2. O **Google Master Token** será gerado e salvo em `~/.notebooklm/profiles/default/master_token.json`.
-3. **Sessão durável**: Sempre que os cookies expirarem, a biblioteca renova as credenciais automaticamente em background via OAuth, sem você precisar fazer login de novo e sem que a IA perca o acesso.
+
+* No Windows, o script utiliza por padrão o **Microsoft Edge** (`--browser msedge`), evitando qualquer conflito de concorrência com o seu Google Chrome do dia a dia.
+* Uma janela se abrirá para autenticação na sua conta Google e o token será salvo em `~/.notebooklm/profiles/default/master_token.json`.
+
+#### 2. Método Alternativo via Cookie `oauth_token` (Sem abrir janela)
+
+Caso prefira não usar automação de navegador ou o Google bloqueie o browser automatizado:
+1. No seu Chrome comum, acesse [accounts.google.com/EmbeddedSetup](https://accounts.google.com/EmbeddedSetup).
+2. Faça login com a sua conta Google.
+3. Abra as Ferramentas do Desenvolvedor (`F12`) ➔ aba **Application** ➔ **Cookies** ➔ `accounts.google.com`.
+4. Copie o valor do cookie **`oauth_token`**.
+5. Execute:
+   ```powershell
+   uv run python login.py --master-token --account seu_email@gmail.com --oauth-token SEU_TOKEN_AQUI
+   ```
 
 ### Checagem de Saúde da Sessão
 
 Para verificar a qualquer momento se a sessão continua ativa e se o Master Token está presente:
 ```powershell
-python login.py --check
-```
-
-### Testar Renovação de Sessão
-
-Para testar a re-emissão de novos cookies a partir do Master Token:
-```powershell
-python login.py --refresh
+uv run python login.py --check
 ```
 
 

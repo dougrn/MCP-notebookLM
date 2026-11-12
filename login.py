@@ -89,6 +89,8 @@ def run_login(
     use_master_token: bool = False,
     account_email: str | None = None,
     force: bool = False,
+    cdp_url: str | None = None,
+    oauth_token: str | None = None,
 ) -> bool:
     """Dispara o processo de login do NotebookLM."""
     python_exe = sys.executable
@@ -100,7 +102,7 @@ def run_login(
         cmd = [python_exe, "-m", "notebooklm", "login", "--browser-cookies", read_cookies]
         if account_email:
             cmd.extend(["--account", account_email])
-    elif use_master_token:
+    elif use_master_token or oauth_token or cdp_url:
         email = account_email or detect_saved_account() or "doug.americo@gmail.com"
         print("=" * 65)
         print("Autenticação via Master Token (Headless)")
@@ -113,9 +115,14 @@ def run_login(
             "--master-token",
             "--account",
             email,
-            "--browser",
-            browser,
         ]
+        if cdp_url:
+            cmd.extend(["--cdp-url", cdp_url])
+        elif oauth_token:
+            cmd.extend(["--oauth-token", oauth_token])
+        else:
+            cmd.extend(["--browser", browser])
+
         if force:
             cmd.append("--force")
     else:
@@ -165,8 +172,8 @@ def main():
     parser.add_argument(
         "--browser",
         choices=["chrome", "msedge", "chromium"],
-        default=default_browser,
-        help=f"Navegador a ser aberto para login (padrão detectado: {default_browser})",
+        default=None,
+        help="Navegador a ser aberto para login (padrão: chromium para master-token, ou navegador do sistema)",
     )
     parser.add_argument(
         "--cookies",
@@ -190,6 +197,18 @@ def main():
         action="store_true",
         help="Limpa o perfil do navegador e força novo login",
     )
+    parser.add_argument(
+        "--cdp-url",
+        type=str,
+        default=None,
+        help="Conecta a um Chrome já aberto com --remote-debugging-port (ex: http://localhost:9222)",
+    )
+    parser.add_argument(
+        "--oauth-token",
+        type=str,
+        default=None,
+        help="Token de uso único obtido do cookie oauth_token em accounts.google.com/EmbeddedSetup",
+    )
 
     args = parser.parse_args()
 
@@ -208,12 +227,16 @@ def main():
             print("Login mantido. Pronto para usar!")
             sys.exit(0)
 
+    chosen_browser = args.browser or ("msedge" if args.master_token else default_browser)
+
     success = run_login(
-        browser=args.browser,
+        browser=chosen_browser,
         read_cookies=args.cookies,
         use_master_token=args.master_token,
         account_email=args.account,
         force=args.force,
+        cdp_url=args.cdp_url,
+        oauth_token=args.oauth_token,
     )
     sys.exit(0 if success else 1)
 

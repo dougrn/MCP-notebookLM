@@ -29,6 +29,18 @@ wheels/
 # Arquivos de ambiente e chaves
 .env
 .env.local
+*.pem
+*.key
+master_token.json
+storage_state.json
+
+# Cache do uv e ferramentas
+.uv/
+.cache/
+
+# Logs e arquivos temporários
+*.log
+*.tmp
 
 # Mídias e downloads do Studio (áudios, podcasts, vídeos)
 *.m4a
@@ -36,8 +48,14 @@ wheels/
 *.pdf
 downloads/
 
-# Playwright
+# Playwright e Navegadores
 .playwright/
+browser_profile/
+
+# Sistema Operacional
+Thumbs.db
+desktop.ini
+.DS_Store
 
 # IDEs
 .vscode/

@@ -139,7 +139,11 @@ def build_server(profile: str | None = None) -> FastMCP:
 
     # Ferramenta para abrir a janela de autenticação interativa na tela do usuário
     @server.tool(name="auth_login")
-    async def auth_login(browser: str = "chrome") -> dict[str, Any]:
+    async def auth_login(
+        browser: str = "msedge",
+        master_token: bool = True,
+        account: str | None = None,
+    ) -> dict[str, Any]:
         """Abre uma nova janela no desktop do usuário para autenticação interativa no Google.
 
         Esta ferramenta não bloqueia o harness: ela dispara a janela do navegador desanexada
@@ -149,15 +153,22 @@ def build_server(profile: str | None = None) -> FastMCP:
         script_path = Path(__file__).parent / "login.py"
 
         try:
+            cmd = [python_exe, str(script_path), "--browser", browser]
+            if master_token:
+                cmd.append("--master-token")
+            if account:
+                cmd.extend(["--account", account])
+
             creationflags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
             proc = subprocess.Popen(
-                [python_exe, str(script_path), "--browser", browser],
+                cmd,
                 creationflags=creationflags,
             )
             return {
                 "status": "login_window_opened",
                 "pid": proc.pid,
                 "browser": browser,
+                "master_token": master_token,
                 "message": (
                     "A janela de login do Google (com Master Token persistente) foi aberta na tela do usuário. "
                     "Peça ao usuário para realizar o login na janela aberta. "
